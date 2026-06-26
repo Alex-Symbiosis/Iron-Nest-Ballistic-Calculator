@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Iron Nest · Ballistics Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-primary: #080c16;
+  --bg-secondary: #0f1525;
+  --bg-card: rgba(16,22,40,0.78);
+  --bg-card-border: rgba(255,255,255,0.06);
+  --accent: #f59e0b;
+  --accent-hover: #fbbf24;
+  --accent-glow: rgba(245,158,11,0.30);
+  --accent-dim: rgba(245,158,11,0.12);
+  --text-primary: #f0f2f8;
+  --text-secondary: #8b93b0;
+  --text-muted: #4f5670;
+  --danger: #ef4444;
+  --danger-bg: rgba(239,68,68,0.12);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+  --glass-blur: 20px;
+  --font-sans: 'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --font-mono: 'JetBrains Mono','Fira Code',monospace;
+  --shadow-card: 0 12px 48px rgba(0,0,0,0.55);
+  --transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+
+*,*::before,*::after { margin:0; padding:0; box-sizing:border-box; }
+html { font-size:16px; -webkit-font-smoothing:antialiased; }
+body {
+  font-family:var(--font-sans); background:var(--bg-primary);
+  color:var(--text-primary); min-height:100dvh; overflow-x:hidden;
+  display:grid; place-items:center;
+}
+
+.bg-layer { position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+.bg-layer::before {
+  content:''; position:absolute; inset:-50%;
+  background:radial-gradient(ellipse at 20% 50%, rgba(245,158,11,0.05) 0%, transparent 55%),
+             radial-gradient(ellipse at 80% 20%, rgba(59,130,246,0.04) 0%, transparent 50%);
+  animation:bgDrift 20s ease-in-out infinite alternate;
+}
+@keyframes bgDrift {
+  0% { transform:translate(0%,0%) rotate(0deg); }
+  100% { transform:translate(3%,-2%) rotate(3deg); }
+}
+.bg-grid {
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,0.012) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,0.012) 1px,transparent 1px);
+  background-size:60px 60px;
+  -webkit-mask-image:radial-gradient(ellipse at center, black 30%, transparent 75%);
+  mask-image:radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+/* Language Toggle */
+.lang-toggle {
+  position:fixed; top:16px; right:16px; z-index:100;
+  display:flex; align-items:center; gap:6px;
+  padding:6px 12px 6px 10px;
+  background:var(--bg-card);
+  backdrop-filter:blur(var(--glass-blur));
+  -webkit-backdrop-filter:blur(var(--glass-blur));
+  border:1px solid var(--bg-card-border);
+  border-radius:20px;
+  cursor:pointer; transition:var(--transition);
+  font-family:var(--font-sans); font-size:0.75rem; font-weight:600;
+  color:var(--text-secondary); user-select:none;
+}
+.lang-toggle:hover {
+  border-color:var(--accent);
+  box-shadow:0 0 16px var(--accent-glow);
+}
+.lang-toggle .toggle-track {
+  width:36px; height:20px; border-radius:10px;
+  background:rgba(255,255,255,0.10);
+  position:relative; flex-shrink:0;
+  transition:var(--transition);
+}
+.lang-toggle .toggle-track::after {
+  content:''; position:absolute; top:2px; left:2px;
+  width:16px; height:16px; border-radius:50%;
+  background:var(--accent);
+  transition:var(--transition);
+}
+.lang-toggle.zh .toggle-track { background:rgba(245,158,11,0.25); }
+.lang-toggle.zh .toggle-track::after { left:18px; }
+.lang-toggle .lang-label { min-width:22px; text-align:center; }
+.lang-toggle .lang-label.en { color:var(--accent); }
+.lang-toggle.zh .lang-label.en { color:var(--text-muted); }
+.lang-toggle.zh .lang-label.zh { color:var(--accent); }
+
+.app-container {
+  position:relative; z-index:1; display:flex; gap:16px;
+  max-width:1560px; width:100%; margin:0 auto;
+  padding:60px 16px 40px; align-items:flex-start;
+}
+
+.panel-left { width:260px; flex-shrink:0; display:flex; flex-direction:column; gap:14px; }
+.panel-center { flex:1; min-width:0; display:flex; flex-direction:column; gap:16px; }
+.panel-right { width:310px; flex-shrink:0; display:flex; flex-direction:column; gap:14px; }
+
+.panel-card {
+  background:var(--bg-card); backdrop-filter:blur(var(--glass-blur));
+  -webkit-backdrop-filter:blur(var(--glass-blur));
+  border:1px solid var(--bg-card-border); border-radius:var(--radius);
+  box-shadow:var(--shadow-card);
+}
+
+.panel-card-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 20px 12px; font-size:0.8rem; font-weight:600;
+  text-transform:uppercase; letter-spacing:0.6px;
+  color:var(--text-secondary); border-bottom:1px solid rgba(255,255,255,0.04);
+}
+
+/* Ammo */
+.ammo-list { padding:10px; display:flex; flex-direction:column; gap:6px; }
+.ammo-item {
+  display:flex; align-items:center; gap:12px; padding:12px 16px;
+  border-radius:var(--radius-xs); cursor:pointer; transition:var(--transition);
+  border:1.5px solid transparent; background:rgba(255,255,255,0.02); user-select:none;
+}
+.ammo-item:hover { background:rgba(245,158,11,0.06); border-color:rgba(245,158,11,0.15); }
+.ammo-item.active { background:rgba(245,158,11,0.08); border-color:var(--accent); box-shadow:0 0 12px rgba(245,158,11,0.10); }
+.ammo-icon { font-size:1.25rem; line-height:1; flex-shrink:0; width:28px; text-align:center; }
+.ammo-name { font-size:0.85rem; font-weight:600; color:var(--text-primary); }
+.ammo-item.active .ammo-name { color:var(--accent); }
+.ammo-sub { font-size:0.7rem; color:var(--text-muted); margin-top:1px; }
+
+/* Console */
+.console-inner { padding:32px 34px 36px; }
+.console-header { display:flex; align-items:center; gap:14px; margin-bottom:28px; }
+.console-icon {
+  flex-shrink:0; width:44px; height:44px; display:flex; align-items:center; justify-content:center;
+  background:var(--accent-dim); border-radius:10px; border:1px solid rgba(245,158,11,0.15);
+}
+.console-icon svg { width:24px; height:24px; stroke:var(--accent); stroke-width:1.8; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+.console-header-text h1 { font-size:1.3rem; font-weight:700; letter-spacing:-0.01em; }
+.console-header-text h1 span { color:var(--accent); }
+.console-header-text .sub { font-size:0.75rem; color:var(--text-secondary); margin-top:1px; }
+
+.input-row { display:flex; gap:12px; align-items:flex-end; margin-bottom:12px; }
+.input-group { flex:1; }
+.input-group label { display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px; letter-spacing:0.2px; }
+.input-wrap { position:relative; }
+.input-wrap input {
+  width:100%; height:52px; padding:0 48px 0 16px;
+  font-family:var(--font-sans); font-size:0.95rem; color:var(--text-primary);
+  background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+  border-radius:var(--radius-xs); outline:none; transition:var(--transition);
+  -moz-appearance:textfield;
+}
+.input-wrap input::-webkit-outer-spin-button,
+.input-wrap input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.input-wrap input:hover { border-color:rgba(255,255,255,0.16); background:rgba(255,255,255,0.06); }
+.input-wrap input:focus { border-color:var(--accent); background:rgba(245,158,11,0.06); box-shadow:0 0 0 3px var(--accent-dim); }
+.input-wrap .unit { position:absolute; right:13px; top:50%; transform:translateY(-50%); font-size:0.82rem; color:var(--text-muted); pointer-events:none; font-weight:500; }
+
+.btn-calc {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  height:52px; padding:0 32px; flex-shrink:0;
+  font-family:var(--font-sans); font-size:0.92rem; font-weight:700; letter-spacing:0.3px;
+  color:#0b0e17; background:linear-gradient(135deg,var(--accent) 0%,var(--accent-hover) 100%);
+  border:none; border-radius:var(--radius-xs); cursor:pointer; transition:var(--transition);
+  position:relative; overflow:hidden;
+}
+.btn-calc::after {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,0.18) 50%,transparent 60%);
+  background-size:200% 200%; background-position:100% 100%;
+  transition:background-position 0.5s ease;
+}
+.btn-calc:hover::after { background-position:0% 0%; }
+.btn-calc:hover { transform:translateY(-2px); box-shadow:0 6px 24px var(--accent-glow); }
+.btn-calc:active { transform:translateY(0px); box-shadow:0 3px 12px var(--accent-glow); }
+.btn-calc svg { width:18px; height:18px; stroke:currentColor; stroke-width:2.2; fill:none; stroke-linecap:round; stroke-linejoin:round; position:relative; z-index:1; }
+.btn-calc span { position:relative; z-index:1; }
+
+.charge-indicator {
+  display:flex; align-items:center; gap:10px; padding:12px 16px;
+  background:rgba(245,158,11,0.06); border:1px solid rgba(245,158,11,0.12);
+  border-radius:var(--radius-xs); margin-bottom:14px;
+}
+.charge-indicator .label { font-size:0.78rem; color:var(--text-muted); }
+.charge-indicator .value { font-size:0.9rem; font-weight:700; color:var(--accent); font-family:var(--font-mono); }
+.charge-indicator .badge {
+  margin-left:auto; font-size:0.68rem; font-weight:600; color:var(--bg-primary);
+  background:var(--accent); padding:2px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:0.3px;
+}
+
+.result-area {
+  min-height:100px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  border-radius:var(--radius-xs); background:rgba(255,255,255,0.015);
+  border:1px solid rgba(255,255,255,0.04); padding:28px 24px; transition:var(--transition);
+}
+.result-area.has-result { border-color:rgba(245,158,11,0.20); background:rgba(245,158,11,0.035); }
+.result-area.has-error { border-color:rgba(239,68,68,0.20); background:var(--danger-bg); }
+.result-placeholder { font-size:0.82rem; color:var(--text-muted); letter-spacing:0.3px; }
+
+.result-value { display:none; flex-direction:column; align-items:center; gap:2px; }
+.result-area.has-result .result-value { display:flex; }
+.result-area.has-result .result-placeholder { display:none; }
+
+@keyframes popIn { 0% { opacity:0; transform:scale(0.82); } 100% { opacity:1; transform:scale(1); } }
+.result-value { animation:popIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+.result-degree { font-family:var(--font-mono); font-size:3.8rem; font-weight:700; color:var(--accent); line-height:1; letter-spacing:-0.02em; }
+.result-degree .deg-symbol { font-size:2rem; opacity:0.5; }
+.result-meta { font-size:0.82rem; color:var(--text-secondary); margin-top:4px; }
+
+.result-error { display:none; flex-direction:column; align-items:center; gap:6px; }
+.result-area.has-error .result-error { display:flex; }
+.result-area.has-error .result-placeholder { display:none; }
+.result-area.has-error .result-error { animation:popIn 0.3s ease forwards; }
+.result-error .err-icon { font-size:1.5rem; line-height:1; }
+.result-error .err-text { font-size:0.9rem; color:var(--danger); font-weight:600; text-align:center; }
+.result-error .err-detail { font-size:0.76rem; color:var(--text-secondary); text-align:center; }
+
+/* History */
+.history-inner { display:flex; flex-direction:column; max-height:calc(100dvh - 60px); }
+.history-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:16px 20px 12px; border-bottom:1px solid rgba(255,255,255,0.04);
+}
+.history-header .title { font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-secondary); }
+.history-header .title span { font-size:0.7rem; color:var(--text-muted); font-weight:400; margin-left:6px; }
+
+.btn-clear {
+  font-size:0.7rem; font-weight:600; color:var(--text-muted);
+  background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.15);
+  border-radius:4px; padding:3px 10px; cursor:pointer; transition:var(--transition);
+  font-family:var(--font-sans);
+}
+.btn-clear:hover { color:var(--danger); background:rgba(239,68,68,0.16); border-color:rgba(239,68,68,0.3); }
+
+.history-list {
+  flex:1; overflow-y:auto; padding:8px 10px;
+  display:flex; flex-direction:column; gap:4px; min-height:120px;
+}
+.history-list {
+}
+.history-list:empty::after {
+  content: attr(data-empty);
+  display:flex; align-items:center; justify-content:center;
+  height:100px; font-size:0.78rem; color:var(--text-muted);
+}
+
+.history-item {
+  display:flex; align-items:center; gap:8px; padding:7px 10px;
+  border-radius:var(--radius-xs); background:rgba(255,255,255,0.02);
+  border:1px solid rgba(255,255,255,0.03); font-size:0.76rem;
+  transition:background 0.2s; animation:itemSlide 0.3s ease forwards;
+}
+.history-item:hover { background:rgba(255,255,255,0.04); }
+
+@keyframes itemSlide { 0% { opacity:0; transform:translateY(-8px); } 100% { opacity:1; transform:translateY(0); } }
+
+.hist-id { font-size:0.65rem; color:var(--text-muted); font-weight:600; min-width:24px; text-align:right; flex-shrink:0; }
+.hist-ammo-wrap { display:flex; align-items:center; gap:4px; flex-shrink:0; min-width:52px; }
+.hist-ammo-icon { font-size:0.85rem; line-height:1; }
+.hist-ammo-label { font-size:0.72rem; font-weight:600; color:var(--text-secondary); }
+.hist-data { color:var(--text-secondary); flex:1; min-width:0; }
+.hist-data em { font-style:normal; color:var(--text-primary); font-weight:500; }
+.hist-data strong { font-style:normal; color:var(--accent); font-weight:700; }
+
+@media (max-width:900px) {
+  .app-container { flex-direction:column; padding:60px 14px 18px; gap:14px; align-items:stretch; }
+  .panel-left, .panel-right { width:100%; }
+  .panel-left { order:0; }
+  .panel-center { order:1; }
+  .panel-right { order:2; }
+  .ammo-list { flex-direction:row; overflow-x:auto; gap:8px; padding:10px 12px; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+  .ammo-list::-webkit-scrollbar { height:3px; }
+  .ammo-list::-webkit-scrollbar-thumb { background:var(--text-muted); border-radius:3px; }
+  .ammo-item { flex-shrink:0; flex-direction:column; gap:4px; padding:8px 14px; min-width:65px; align-items:center; }
+  .ammo-icon { font-size:1.3rem; }
+  .ammo-name { font-size:0.72rem; text-align:center; }
+  .ammo-sub { display:none; }
+  .input-row { flex-direction:column; gap:10px; }
+  .btn-calc { width:100%; }
+  .console-inner { padding:20px 18px 24px; }
+  .history-inner { max-height:none; }
+  .history-list { max-height:200px; min-height:80px; }
+  .lang-toggle { top:8px; right:8px; padding:4px 10px 4px 8px; }
+}
+
+@media (max-width:480px) {
+  .app-container { padding:52px 10px 14px; gap:8px; }
+  .console-inner { padding:16px 14px 20px; }
+  .result-degree { font-size:2.2rem; }
+  .panel-card { border-radius:10px; }
+}
+
+.attribution { margin-top:12px; text-align:center; font-size:0.7rem; color:var(--text-secondary); letter-spacing:0.5px; }
+.copyright { margin-top:4px; text-align:center; font-size:0.6rem; color:var(--text-muted); letter-spacing:0.3px; opacity:0.6; }
+button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.history-list::-webkit-scrollbar { width:4px; }
+.history-list::-webkit-scrollbar-track { background:transparent; }
+.history-list::-webkit-scrollbar-thumb { background:var(--text-muted); border-radius:4px; }
+</style>
+</head>
+<body>
+
+<div class="bg-layer"></div>
+<div class="bg-grid"></div>
+
+<!-- Language Toggle -->
+<div class="lang-toggle" id="langToggle" role="button" tabindex="0" aria-label="Switch language">
+  <span class="lang-label en">EN</span>
+  <span class="toggle-track"></span>
+  <span class="lang-label zh">中文</span>
+</div>
+
+<div class="app-container">
+
+  <!-- LEFT PANEL - Ammo Selection -->
+  <div class="panel-left" role="navigation" aria-label="Ammo Selection">
+    <div class="panel-card">
+      <div class="panel-card-header" data-i18n="ammoSelection">AMMO SELECTION</div>
+      <div class="ammo-list" id="ammoList">
+        <div class="ammo-item" data-ammo="AP">
+          <span class="ammo-icon">🔩</span>
+          <div>
+            <div class="ammo-name">AP</div>
+            <div class="ammo-sub" data-i18n="apSub">Armor Piercing</div>
+          </div>
+        </div>
+        <div class="ammo-item active" data-ammo="HE">
+          <span class="ammo-icon">💥</span>
+          <div>
+            <div class="ammo-name">HE</div>
+            <div class="ammo-sub" data-i18n="heSub">High Explosive</div>
+          </div>
+        </div>
+        <div class="ammo-item" data-ammo="HCHE">
+          <span class="ammo-icon">🔥</span>
+          <div>
+            <div class="ammo-name">HCHE</div>
+            <div class="ammo-sub" data-i18n="hcheSub">High Capacity HE</div>
+          </div>
+        </div>
+        <div class="ammo-item" data-ammo="START">
+          <span class="ammo-icon">💡</span>
+          <div>
+            <div class="ammo-name">START</div>
+            <div class="ammo-sub" data-i18n="startSub">Illumination</div>
+          </div>
+        </div>
+        <div class="ammo-item" data-ammo="CE">
+          <span class="ammo-icon">⚡</span>
+          <div>
+            <div class="ammo-name">CE</div>
+            <div class="ammo-sub" data-i18n="ceSub">Chemical Energy</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER PANEL - Main Console -->
+  <div class="panel-center" role="main" aria-label="Ballistics Console">
+    <div class="panel-card">
+      <div class="console-inner">
+
+        <div class="console-header">
+          <div class="console-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="8"/>
+              <circle cx="12" cy="12" r="3"/>
+              <line x1="12" y1="2" x2="12" y2="7"/>
+              <line x1="12" y1="17" x2="12" y2="22"/>
+              <line x1="2" y1="12" x2="7" y2="12"/>
+              <line x1="17" y1="12" x2="22" y2="12"/>
+            </svg>
+          </div>
+          <div class="console-header-text">
+            <h1><span data-i18n="consoleTitle">Iron Nest</span> <span data-i18n="consoleTitleSpan">Ballistics</span></h1>
+            <div class="sub" data-i18n="consoleSub">Target Distance Calculator</div>
+          </div>
+        </div>
+
+        <form id="calcForm" novalidate>
+          <div class="input-row">
+            <div class="input-group">
+              <label for="distanceInput" data-i18n="targetDistance">Target Distance</label>
+              <div class="input-wrap">
+                <input type="number" id="distanceInput" step="any" min="0.1" max="30"
+                       placeholder="e.g. 12.5" autocomplete="off" required>
+                <span class="unit">km</span>
+              </div>
+            </div>
+            <button type="submit" class="btn-calc">
+              <svg viewBox="0 0 24 24">
+                <line x1="12" y1="19" x2="12" y2="5"/>
+                <polyline points="5 12 12 5 19 12"/>
+              </svg>
+              <span data-i18n="calculate">CALCULATE</span>
+            </button>
+          </div>
+        </form>
+
+        <div class="charge-indicator" id="chargeIndicator">
+          <span class="label" data-i18n="autoCharge">Auto Charge</span>
+          <span class="value" id="chargeDisplay">Charge 6</span>
+          <span class="badge">AUTO</span>
+        </div>
+
+        <div class="result-area" id="resultArea">
+          <div class="result-placeholder" data-i18n="placeholderResult">Enter target distance and press CALCULATE</div>
+          <div class="result-value" id="resultValue">
+            <div class="result-degree" id="resultDegree">&mdash;<span class="deg-symbol">&deg;</span></div>
+            <div class="result-meta" id="resultMeta"></div>
+          </div>
+          <div class="result-error" id="resultError">
+            <div class="err-icon">&#x26A0;</div>
+            <div class="err-text" id="errText"></div>
+            <div class="err-detail" id="errDetail"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="attribution" data-i18n="attribution">Iron Nest &middot; Ballistics Calculator</div>
+    <div class="copyright">Copyright &copy; 2026 Alex-Symbiosis. All rights reserved.</div>
+  </div>
+
+  <!-- RIGHT PANEL - History Log -->
+  <div class="panel-right" role="complementary" aria-label="History Log">
+    <div class="panel-card">
+      <div class="history-inner">
+        <div class="history-header">
+          <div class="title" data-i18n="history">History <span id="historyCount">0</span></div>
+          <button class="btn-clear" id="clearHistoryBtn" data-i18n="clear">CLEAR</button>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   Ballistic Engine (PRESERVED)
+   ============================================================ */
+var CHARGE_TABLE = Object.freeze({
+  1: { label: 'Charge 1', labelZh: '\u88C5\u836F 1', minRange: 0.1, maxRange: 5,   baseAngle: 1.2,  rangeStart: 0,   slope: 0.96 },
+  2: { label: 'Charge 2', labelZh: '\u88C5\u836F 2', minRange: 5,   maxRange: 10,  baseAngle: 30.6, rangeStart: 5,   slope: 0.6  },
+  3: { label: 'Charge 3', labelZh: '\u88C5\u836F 3', minRange: 10,  maxRange: 15,  baseAngle: 40.4, rangeStart: 10,  slope: 0.4  },
+  4: { label: 'Charge 4', labelZh: '\u88C5\u836F 4', minRange: 15,  maxRange: 20,  baseAngle: 45.3, rangeStart: 15,  slope: 0.3  },
+  5: { label: 'Charge 5', labelZh: '\u88C5\u836F 5', minRange: 20,  maxRange: 25,  baseAngle: 48.3, rangeStart: 20,  slope: 0.2  },
+  6: { label: 'Charge 6', labelZh: '\u88C5\u836F 6', minRange: 25,  maxRange: 30,  baseAngle: 50.3, rangeStart: 25,  slope: 0.1  },
+});
+var GLOBAL_MIN = 0.1, GLOBAL_MAX = 30;
+
+function calcElevation(distance, charge) {
+  if (typeof distance !== 'number' || isNaN(distance) || distance < GLOBAL_MIN || distance > GLOBAL_MAX) {
+    return { error: '\u8D85\u51FA\u5C04\u7A0B', detail: '\u6709\u6548\u5C04\u7A0B\u4E3A ' + GLOBAL_MIN + ' - ' + GLOBAL_MAX + ' km' };
+  }
+  var cfg = CHARGE_TABLE[charge];
+  if (!cfg) return { error: '\u65E0\u6548\u88C5\u836F\u91CF', detail: '\u8BF7\u9009\u62E9\u88C5\u836F 1-6' };
+  if (distance < cfg.minRange || distance > cfg.maxRange) {
+    return { error: '\u8BE5\u88C5\u836F\u91CF\u65E0\u6CD5\u8986\u76D6\u6B64\u8DDD\u79BB', detail: cfg.label + ' \u6709\u6548\u5C04\u7A0B: ' + cfg.minRange + ' - ' + cfg.maxRange + ' km' };
+  }
+  var angle = cfg.baseAngle + cfg.slope * (distance - cfg.rangeStart);
+  return { angle: Math.round(angle * 100) / 100 };
+}
+
+/* ============================================================
+   Auto-Detect Charge & Ammo
+   ============================================================ */
+var AMMO_MAP = {
+  AP:   { icon: '\uD83D\uDD29', name: 'AP',   nameZh: '\u7A7F\u7532\u5F39' },
+  HE:   { icon: '\uD83D\uDCA5', name: 'HE',   nameZh: '\u9AD8\u7206\u5F39' },
+  HCHE: { icon: '\uD83D\uDD25', name: 'HCHE', nameZh: '\u9AD8\u5BB9\u91CF\u9AD8\u7206\u5F39' },
+  START:{ icon: '\uD83D\uDCA1', name: 'START',nameZh: '\u7167\u660E\u5F39' },
+  CE:   { icon: '\u26A1',        name: 'CE',    nameZh: '\u7834\u7532\u5F39' },
+};
+
+function detectCharge(distance) {
+  if (typeof distance !== 'number' || isNaN(distance)) return null;
+  if (distance <= 5)   return 1;
+  if (distance <= 10)  return 2;
+  if (distance <= 15)  return 3;
+  if (distance <= 20)  return 4;
+  if (distance <= 25)  return 5;
+  if (distance <= 30)  return 6;
+  return null;
+}
+
+/* ============================================================
+   Translations
+   ============================================================ */
+var TRANSLATIONS = {
+  en: {
+    ammoSelection: 'AMMO SELECTION',
+    apSub: 'Armor Piercing', heSub: 'High Explosive', hcheSub: 'High Capacity HE',
+    startSub: 'Illumination', ceSub: 'Chemical Energy',
+    consoleTitle: 'Iron Nest', consoleTitleSpan: 'Ballistics',
+    consoleSub: 'Target Distance Calculator',
+    targetDistance: 'Target Distance', calculate: 'CALCULATE',
+    autoCharge: 'Auto Charge', placeholderResult: 'Enter target distance and press CALCULATE',
+    history: 'History', clear: 'CLEAR',
+    attribution: 'Iron Nest \u00B7 Ballistics Calculator',
+  },
+  zh: {
+    ammoSelection: '\u5F39\u836F\u9009\u62E9',
+    apSub: '\u7A7F\u7532\u5F39', heSub: '\u9AD8\u7206\u5F39', hcheSub: '\u9AD8\u5BB9\u91CF\u9AD8\u7206\u5F39',
+    startSub: '\u7167\u660E\u5F39', ceSub: '\u7834\u7532\u5F39',
+    consoleTitle: '\u94C1\u5DE2\u91CD\u70AE', consoleTitleSpan: '\u00B7 \u5F39\u9053\u8BA1\u7B97\u673A',
+    consoleSub: '\u5F39\u9053\u8BA1\u7B97\u5DE5\u5177',
+    targetDistance: '\u76EE\u6807\u8DDD\u79BB', calculate: '\u8BA1\u7B97\u4EF0\u89D2',
+    autoCharge: '\u5F53\u524D\u81EA\u52A8\u5339\u914D', placeholderResult: '\u8F93\u5165\u76EE\u6807\u8DDD\u79BB\uFF0C\u70B9\u51FB\u300C\u8BA1\u7B97\u4EF0\u89D2\u300D',
+    history: '\u4F5C\u6218\u65E5\u5FD7', clear: '\u6E05\u7A7A\u8BB0\u5F55',
+    attribution: '\u300A\u94C1\u5DE2\u91CD\u70AE \u00B7 Iron Nest\u300B',
+  }
+};
+
+var currentLang = 'en';
+
+function updatePlaceholder() {
+  var input = document.getElementById('distanceInput');
+  input.placeholder = currentLang === 'en' ? 'e.g. 12.5' : '\u4F8B\u5982 12.5';
+}
+
+function toggleLanguage() {
+  currentLang = (currentLang === 'en') ? 'zh' : 'en';
+  var toggle = document.getElementById('langToggle');
+  toggle.classList.toggle('zh', currentLang === 'zh');
+
+  // Update static elements with data-i18n
+  var els = document.querySelectorAll('[data-i18n]');
+  for (var i = 0; i < els.length; i++) {
+    var key = els[i].getAttribute('data-i18n');
+    var txt = TRANSLATIONS[currentLang][key];
+    if (txt !== undefined) {
+      // Preserve inner HTML for elements that have child nodes (like History with <span id="historyCount">)
+      var children = els[i].children;
+      if (children.length > 0) {
+        // Replace only the first text node, or use a placeholder approach
+        // For history header: keep the <span> inside
+        els[i].innerHTML = txt + ' <span id="historyCount">' + (document.getElementById('historyCount') ? document.getElementById('historyCount').textContent : '0') + '</span>';
+      } else {
+        els[i].textContent = txt;
+      }
+    }
+  }
+
+  // Update charge display
+  updateChargeDisplay();
+
+  // Update placeholder
+  updatePlaceholder();
+
+  // Re-render history with new language
+  renderHistory();
+
+  // Update result meta if visible
+  var resultArea = document.getElementById('resultArea');
+  if (resultArea.classList.contains('has-result')) {
+    var meta = document.getElementById('resultMeta');
+    // Keep existing data and re-render
+    var distText = currentLang === 'en' ? 'Target' : '\u76EE\u6807';
+    var metaData = meta.getAttribute('data-result');
+    if (metaData) {
+      var parts = metaData.split('|');
+      meta.textContent = distText + ' ' + parts[0] + ' km | ' + getChargeLabel(parseInt(parts[1], 10));
+    }
+  }
+}
+
+function getChargeLabel(charge) {
+  var cfg = CHARGE_TABLE[charge];
+  if (!cfg) return 'Charge -';
+  return currentLang === 'en' ? cfg.label : cfg.labelZh;
+}
+
+function getAmmoLabel(ammoKey) {
+  var ammo = AMMO_MAP[ammoKey] || AMMO_MAP.HE;
+  return currentLang === 'en' ? ammo.name : ammo.nameZh;
+}
+
+function updateChargeDisplay() {
+  var raw = document.getElementById('distanceInput').value;
+  var dist = parseFloat(raw);
+  var chargeDisp = document.getElementById('chargeDisplay');
+  if (!isNaN(dist) && dist >= 0.1 && dist <= 30) {
+    var ch = detectCharge(dist);
+    if (ch && CHARGE_TABLE[ch]) {
+      chargeDisp.textContent = getChargeLabel(ch);
+    } else {
+      chargeDisp.textContent = currentLang === 'en' ? 'Charge -' : '\u88C5\u836F -';
+    }
+  } else {
+    chargeDisp.textContent = currentLang === 'en' ? 'Charge -' : '\u88C5\u836F -';
+  }
+}
+
+/* ============================================================
+   UI Controller
+   ============================================================ */
+var form        = document.getElementById('calcForm');
+var distanceIn  = document.getElementById('distanceInput');
+var chargeDisp  = document.getElementById('chargeDisplay');
+var resultArea  = document.getElementById('resultArea');
+var resultVal   = document.getElementById('resultValue');
+var resultDeg   = document.getElementById('resultDegree');
+var resultMeta  = document.getElementById('resultMeta');
+var resultErr   = document.getElementById('resultError');
+var errText     = document.getElementById('errText');
+var errDetail   = document.getElementById('errDetail');
+var historyList = document.getElementById('historyList');
+var historyCnt  = document.getElementById('historyCount');
+var clearBtn    = document.getElementById('clearHistoryBtn');
+var langToggle  = document.getElementById('langToggle');
+
+var STORAGE_KEY = 'iron_nest_history';
+var MAX_HISTORY = 50;
+
+var currentAmmo = 'HE';
+var historyCounter = parseInt(localStorage.getItem('iron_nest_counter') || '0', 10);
+
+// Language toggle
+langToggle.addEventListener('click', toggleLanguage);
+langToggle.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLanguage(); }
+});
+
+// Ammo selection
+document.querySelectorAll('.ammo-item').forEach(function(el) {
+  el.addEventListener('click', function() {
+    document.querySelectorAll('.ammo-item').forEach(function(x) { x.classList.remove('active'); });
+    el.classList.add('active');
+    currentAmmo = el.dataset.ammo;
+  });
+});
+
+// Distance input -> auto-detect charge
+function onDistanceChange() {
+  updateChargeDisplay();
+}
+distanceIn.addEventListener('input', onDistanceChange);
+distanceIn.addEventListener('change', onDistanceChange);
+
+// Result helpers
+function resetResult() { resultArea.classList.remove('has-result', 'has-error'); }
+function showResult(angle, distance, charge) {
+  resetResult();
+  resultDeg.innerHTML = angle.toFixed(2) + '<span class="deg-symbol">&deg;</span>';
+  var distText = currentLang === 'en' ? 'Target' : '\u76EE\u6807';
+  resultMeta.textContent = distText + ' ' + distance.toFixed(1) + ' km | ' + getChargeLabel(charge);
+  resultMeta.setAttribute('data-result', distance.toFixed(1) + '|' + charge);
+  resultArea.classList.add('has-result');
+}
+function showError(msg, detail) {
+  resetResult();
+  errText.textContent = msg;
+  errDetail.textContent = detail || '';
+  resultArea.classList.add('has-error');
+}
+
+// History
+function loadHistory() {
+  try { var d = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); return Array.isArray(d) ? d : []; }
+  catch(e) { return []; }
+}
+function saveHistory(entries) { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries.slice(0, MAX_HISTORY))); }
+
+function renderHistory() {
+  var entries = loadHistory();
+  historyList.innerHTML = '';
+  if (entries.length === 0) {
+    historyList.setAttribute('data-empty', currentLang === 'en' ? 'No records' : '暂无记录');
+    return;
+  }
+  historyList.removeAttribute('data-empty');
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    var ammo = AMMO_MAP[e.ammo] || AMMO_MAP['HE'];
+    var ammoLabel = getAmmoLabel(e.ammo);
+    var div = document.createElement('div');
+    div.className = 'history-item';
+    var distText = currentLang === 'en' ? 'Distance' : '\u8DDD\u79BB';
+    var chargeText = currentLang === 'en' ? 'Charge' : '\u88C5\u836F';
+    var elevText = currentLang === 'en' ? 'Elevation' : '\u4EF0\u89D2';
+    div.innerHTML =
+      '<span class="hist-id">#' + e.id + '</span>' +
+      '<span class="hist-ammo-wrap"><span class="hist-ammo-icon">' + ammo.icon + '</span><span class="hist-ammo-label">' + ammoLabel + '</span></span>' +
+      '<span class="hist-data">' + distText + ':<em>' + e.distance.toFixed(1) + '</em>km | ' + chargeText + ':<em>' + e.charge + '</em> | ' + elevText + ':<strong>' + e.angle.toFixed(2) + '&deg;</strong></span>';
+    historyList.appendChild(div);
+  }
+  var cnt = document.getElementById('historyCount');
+  if (cnt) cnt.textContent = entries.length;
+}
+
+function addHistoryEntry(ammo, distance, charge, angle) {
+  historyCounter++;
+  localStorage.setItem('iron_nest_counter', String(historyCounter));
+  var entry = { id: historyCounter, ammo: ammo, distance: distance, charge: charge, angle: angle };
+  var entries = loadHistory();
+  entries.unshift(entry);
+  if (entries.length > MAX_HISTORY) entries = entries.slice(0, MAX_HISTORY);
+  saveHistory(entries);
+  renderHistory();
+}
+
+function clearHistory() {
+  localStorage.removeItem(STORAGE_KEY);
+  renderHistory();
+}
+clearBtn.addEventListener('click', clearHistory);
+
+function parseDistance(value) {
+  if (value === '' || value === null || value === undefined) return NaN;
+  var trimmed = String(value).trim();
+  if (trimmed === '') return NaN;
+  var n = Number(trimmed);
+  if (!Number.isFinite(n)) return NaN;
+  return n;
+}
+
+function handleCalculate(event) {
+  event.preventDefault();
+  var raw = distanceIn.value;
+  var dist = parseDistance(raw);
+  if (isNaN(dist)) { showError('\u8BF7\u8F93\u5165\u6709\u6548\u7684\u6570\u5B57', '\u8BF7\u68C0\u67E5\u76EE\u6807\u8DDD\u79BB\u8F93\u5165\u6846'); return; }
+  var charge = detectCharge(dist);
+  if (charge === null) { showError('\u8D85\u51FA\u5C04\u7A0B', '\u6709\u6548\u5C04\u7A0B: 0.1 - 30 km'); return; }
+  var result = calcElevation(dist, charge);
+  if ('error' in result) { showError(result.error, result.detail); return; }
+  showResult(result.angle, dist, charge);
+  addHistoryEntry(currentAmmo, dist, charge, result.angle);
+}
+
+form.addEventListener('submit', handleCalculate);
+document.addEventListener('keydown', function(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+});
+distanceIn.addEventListener('input', resetResult);
+
+renderHistory();
+updateChargeDisplay();
+updatePlaceholder();
+</script>
+
+</body>
+</html>
